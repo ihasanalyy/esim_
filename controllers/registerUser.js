@@ -124,6 +124,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
             [{ text: "Global", callback_data: "global_GXX" }],
             [{ text: "Europe", callback_data: "europe_EXX" }],
             [{ text: "Specify Country", callback_data: "specify_country" }],
+            [{ text: "Main Menu", callback_data: "main_menu" }]
         ];
         await sendButtons(chatId, buttons, message, "esim_overview")
     }
@@ -158,53 +159,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
 
         return await sendButtons(chatId, buttons, "Please select your country:",);
     }
-    // else if (chat.last_message?.startsWith("country_") || payload?.startsWith("country_") || (payload === "country_")) {
-    //     console.log("we are in country code");
-    //     const parts = payload.split("_");
-    //     const countryCode = parts[1];
-    //     console.log("countryCode", countryCode);
-
-    //     const response = await getProductsByCountry(countryCode);
-    //     const allPackages = response?.data || [];
-
-    //     console.log(allPackages, "allPackages");
-    //     const currentPage = 0; // Start from page 0
-
-    //     packageCache[chatId] = {
-    //         packages: allPackages,
-    //         currentPage: currentPage,
-    //     };
-
-    //     const pageSize = 6;
-    //     const totalPages = Math.ceil(allPackages.length / pageSize);
-
-    //     const paginated = allPackages.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-
-    //     let message = `🌍 *Available eSIM Packages (Page ${currentPage + 1} of ${totalPages})*\n\n`;
-    //     const buttons = [];
-
-    //     paginated.forEach((item, index) => {
-    //         const serial = currentPage * pageSize + index + 1;
-    //         message += `${serial}.\n Name: ${item.name} \nPrice: ${item.destination.amount} ${item.destination.unit} \nValidity: ${item.validity.quantity} ${item.validity.unit} \nOperator: ${item.operator.name} \nAvailability Zones: ${item.availability_zones.join(", ")} \n\n`;
-    //         buttons.push([{ text: `${serial}`, callback_data: `view_package_${item.id}` }]);
-    //     });
-
-    //     // Pagination buttons
-    //     const navigationButtons = [];
-    //     if (currentPage > 0) {
-    //         navigationButtons.push({ text: "⬅️ Previous", callback_data: `pagecountry_prev_${countryCode}` });
-    //     }
-    //     if ((currentPage + 1) < totalPages) {
-    //         navigationButtons.push({ text: "Next ➡️", callback_data: `pagecountry_next_${countryCode}` });
-    //     }
-
-    //     if (navigationButtons.length > 0) {
-    //         buttons.push(navigationButtons);
-    //     }
-
-    //     await sendButtons(chatId, buttons, message);
-    // }
-    else if (chat.last_message?.startsWith("country_") || payload?.startsWith("country_") || (payload === "country_")) {
+    else if (chat.last_message?.startsWith("country_") || payload?.startsWith("country_") || payload === "country_") {
         console.log("we are in country code");
         const parts = payload.split("_");
         const countryCode = parts[1];
@@ -214,7 +169,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
         const allPackages = response?.data || [];
     
         console.log(allPackages, "allPackages");
-        const currentPage = 0; // Start from page 0
+        const currentPage = 0;
     
         packageCache[chatId] = {
             packages: allPackages,
@@ -223,7 +178,6 @@ export async function registerUser(chatId, payload, chat, text_message) {
     
         const pageSize = 6;
         const totalPages = Math.ceil(allPackages.length / pageSize);
-    
         const paginated = allPackages.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
     
         let message = `🌍 *Available eSIM Packages (Page ${currentPage + 1} of ${totalPages})*\n\n`;
@@ -236,14 +190,12 @@ export async function registerUser(chatId, payload, chat, text_message) {
     
             row.push({ text: `${serial}`, callback_data: `view_package_${item.id}` });
     
-            // Add row of 3 buttons or if it's the last item
             if ((index + 1) % 3 === 0 || index === paginated.length - 1) {
                 buttons.push(row);
                 row = [];
             }
         });
     
-        // Pagination buttons
         const navigationButtons = [];
         if (currentPage > 0) {
             navigationButtons.push({ text: "⬅️ Previous", callback_data: `pagecountry_prev_${countryCode}` });
@@ -252,15 +204,18 @@ export async function registerUser(chatId, payload, chat, text_message) {
             navigationButtons.push({ text: "Next ➡️", callback_data: `pagecountry_next_${countryCode}` });
         }
     
+        // Push navigation buttons (if any)
         if (navigationButtons.length > 0) {
             buttons.push(navigationButtons);
         }
     
+        // ✅ Add Main Menu button in the last row
+        buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
+    
         await sendButtons(chatId, buttons, message);
     }
     
-
-    else if ((chat.last_message?.startsWith("pagecountry_next_")) || (payload?.startsWith("pagecountry_next_")) || (payload === "pagecountry_next_")) {
+    else if (payload?.startsWith("pagecountry_next_")) {
         console.log("we are in country page next");
         const parts = payload.split("_");
         const countryCode = parts[3];
@@ -278,13 +233,19 @@ export async function registerUser(chatId, payload, chat, text_message) {
             let message = `🌍 *Available eSIM Packages (Page ${nextPage + 1} of ${totalPages})*\n\n`;
             const buttons = [];
 
+            let row = [];
             paginated.forEach((item, index) => {
                 const serial = nextPage * pageSize + index + 1;
                 message += `${serial}\n Name: ${item.name} \nPrice: ${item.destination.amount} ${item.destination.unit} \nValidity: ${item.validity.quantity} ${item.validity.unit} \nOperator: ${item.operator.name} \n\n`;
-                buttons.push([{ text: `${serial}`, callback_data: `view_package_${item.id}` }]);
+
+                row.push({ text: `${serial}`, callback_data: `view_package_${item.id}` });
+
+                if ((index + 1) % 3 === 0 || index === paginated.length - 1) {
+                    buttons.push(row);
+                    row = [];
+                }
             });
 
-            // Pagination buttons
             const navigationButtons = [];
             if (nextPage > 0) {
                 navigationButtons.push({ text: "⬅️ Previous", callback_data: `pagecountry_prev_${countryCode}` });
@@ -296,11 +257,11 @@ export async function registerUser(chatId, payload, chat, text_message) {
             if (navigationButtons.length > 0) {
                 buttons.push(navigationButtons);
             }
-
+            buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
             await sendButtons(chatId, buttons, message);
         }
     }
-    else if ((chat.last_message?.startsWith("pagecountry_prev_")) || (payload?.startsWith("pagecountry_prev_")) || (payload === "pagecountry_prev_")) {
+    else if (payload?.startsWith("pagecountry_prev_")) {
         console.log("we are in country page prev");
         const parts = payload.split("_");
 
@@ -327,13 +288,19 @@ export async function registerUser(chatId, payload, chat, text_message) {
             let message = `🌍 *Available eSIM Packages (Page ${prevPage + 1} of ${totalPages})*\n\n`;
             const buttons = [];
 
+            let row = [];
             paginated.forEach((item, index) => {
                 const serial = prevPage * pageSize + index + 1;
                 message += `${serial}\n Name: ${item.name} \nPrice: ${item.destination.amount} ${item.destination.unit} \nValidity: ${item.validity.quantity} ${item.validity.unit} \nOperator: ${item.operator.name} \n\n`;
-                buttons.push([{ text: `${serial}`, callback_data: `view_package_${item.id}` }]);
+
+                row.push({ text: `${serial}`, callback_data: `view_package_${item.id}` });
+
+                if ((index + 1) % 3 === 0 || index === paginated.length - 1) {
+                    buttons.push(row);
+                    row = [];
+                }
             });
 
-            // Pagination buttons
             const navigationButtons = [];
             if (prevPage > 0) {
                 navigationButtons.push({ text: "⬅️ Previous", callback_data: `pagecountry_prev_${countryCode}` });
@@ -345,10 +312,11 @@ export async function registerUser(chatId, payload, chat, text_message) {
             if (navigationButtons.length > 0) {
                 buttons.push(navigationButtons);
             }
-
+            buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
             await sendButtons(chatId, buttons, message);
         }
     }
+
     else if ((chat.last_message?.startsWith("global_GXX")) || (payload?.startsWith("global_GXX")) || (payload === "global_GXX")) {
         console.log(payload, "payload in region_global");
         const parts = payload.split("_");
@@ -394,7 +362,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
         if (navigationButtons.length > 0) {
             buttons.push(navigationButtons);
         }
-
+        buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
         await sendButtons(chatId, buttons, message);
     }
     else if ((chat.last_message?.startsWith("europe_EXX")) || (payload?.startsWith("europe_EXX")) || (payload === "europe_EXX")) {
@@ -442,10 +410,10 @@ export async function registerUser(chatId, payload, chat, text_message) {
         if (navigationButtons.length > 0) {
             buttons.push(navigationButtons);
         }
-
+        buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
         await sendButtons(chatId, buttons, message);
     }
-    
+
     else if (chat.last_message?.match(/^(global|europe)_page_next_/) || payload?.match(/^(global|europe)_page_next_/) || payload === "global_page_next_" || payload === "europe_page_next_") {
         const parts = payload.split("_");
         const region = parts[0];
@@ -490,7 +458,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
             if (navigationButtons.length > 0) {
                 buttons.push(navigationButtons);
             }
-
+            buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
             await sendButtons(chatId, buttons, message);
         }
     }
@@ -538,7 +506,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
             if (navigationButtons.length > 0) {
                 buttons.push(navigationButtons);
             }
-
+            buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
             await sendButtons(chatId, buttons, message);
         }
     }
@@ -561,8 +529,8 @@ export async function registerUser(chatId, payload, chat, text_message) {
         await sendButtons(chatId, buttons, message, "region_global")
     }
 
-  
-   
+
+
 
 
 
