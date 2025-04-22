@@ -1,5 +1,5 @@
 
-// import { text } from "body-parser";
+
 import { sendPhoto, sendMessage, sendButtons } from "../utils/messageHelper.js";
 import jwt from "jsonwebtoken";
 import { TelegramBot } from './../models/User.js';
@@ -11,6 +11,9 @@ const pageSize = 6;
 const getFlag = (isoCode) => countryEmoji.flag(isoCode) || '';
 
 import { getAvailableCountries } from "../utils/countryHelper.js";
+import walletsCollection from "../models/wallets.js";
+import { esim } from "../models/Esim.js";
+
 
 // let user;
 // let userLastMessage = user?.last_message;
@@ -115,7 +118,71 @@ export async function registerUser(chatId, payload, chat, text_message) {
         await sendButtons(chatId, buttons, message, "Opt_all");
     }
     // esim_overview flow
-    else if ((chat.last_message?.startsWith("add_another_esim")) || (payload?.startsWith("add_another_esim") || (payload === "add_another_esim"))) {
+    else if (payload?.startsWith('add_another_esim')) {
+        const packageId = payload.split("_")
+        const message = 'Select the payment method you would like to pay with:'
+        const buttons = [
+            [{ text: 'Instapay Wallets', callback_data: `instapay_wallets_${packageId}` }],
+            [{ text: 'Paypal', callback_data: 'esim_proceed' }],
+            [{ text: 'Add Payment Card', callback_data: 'add_payment_card' }],
+            [{ text: 'Main Menu', callback_data: 'main_menu' }]
+        ]
+        await sendButtons(chatId, buttons, message, 'confirmation')
+    }
+    else if (payload?.startsWith('add_payment_card')) {
+        const message = 'Select your channel:'
+        const buttons = [
+            [{ text: '********2718', callback_data: 'esim_proceed' }],
+            [{ text: '********9042', callback_data: 'esim_proceed' }],
+            [{ text: '********8791', callback_data: 'esim_proceed' }],
+            [{ text: 'Change Payment Method', callback_data: 'add_another_esim' }],
+            [{ text: 'Main Menu', callback_data: 'main_menu' }]
+        ]
+        sendButtons(chatId, buttons, message, 'paypal_cond')
+    }
+
+    else if (payload?.startsWith('instapay_wallets_')) {
+        const packageId = payload.split("_")[2];
+        const walletsData = await walletsCollection.find({ chatId });
+        console.log(walletsData, 'wallets');
+
+        const message = "Select the wallet currency you’d like to use for this transaction:";
+
+        const buttons = walletsData.map(w => {
+            const wallet = w.toObject(); // 👈 convert Mongoose document to plain object
+            return [{
+                text: `${wallet.accountType}`,
+                callback_data: `wallet_type_${wallet.accountType}`
+            }];
+        });
+
+        sendButtons(chatId, buttons, message, 'payment_method');
+    }
+
+
+    else if (payload?.startsWith('wallet_type_')) {
+        const accountType = payload.split("_")[2];
+        const wallet = await walletsCollection.findOne({ chatId, accountType })
+        const w = wallet.toObject()
+        if (!wallet) {
+            return sendMessage(chatId, `❌ Wallet not found for account type: ${accountType}`);
+        }
+        console.log("wallet", w)
+        console.log("Amount:", w.amount);
+        console.log("Type of amount:", typeof w.amount);
+
+        const message = `You currently have ${w.amount} ${w.accountType} \nProceed or choose a different wallet.`;
+
+        const buttons = [
+            [{ text: 'Proceed', callback_data: `esim_proceed` }],
+            [{ text: 'Another wallet', callback_data: `instapay_wallets_` }],
+            [{ text: 'Main Menu', callback_data: 'main_menu' }]
+        ];
+
+        sendButtons(chatId, buttons, message, 'pkr_method');
+    }
+
+    else if ((chat.last_message?.startsWith("esim_proceed")) || (payload?.startsWith("esim_proceed") || (payload === "esim_proceed"))) {
         console.log("we are in esim overview")
         const data = await TelegramBot.findOne({ recipient: chatId })
         console.log("data", data)
@@ -132,6 +199,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
         const message = "Enter the country name:";
         sendMessage(chatId, message, "country_name")
     }
+    // user give country name
     else if ((text_message == chat.last_message)) {
         if (text_message?.length < 4) {
             return await sendMessage(chatId, "Please enter at least 4 characters.");
@@ -159,43 +227,44 @@ export async function registerUser(chatId, payload, chat, text_message) {
 
         return await sendButtons(chatId, buttons, "Please select your country:",);
     }
+    // specific country
     else if (chat.last_message?.startsWith("country_") || payload?.startsWith("country_") || payload === "country_") {
         console.log("we are in country code");
         const parts = payload.split("_");
         const countryCode = parts[1];
         console.log("countryCode", countryCode);
-    
+
         const response = await getProductsByCountry(countryCode);
         const allPackages = response?.data || [];
-    
+
         console.log(allPackages, "allPackages");
         const currentPage = 0;
-    
+
         packageCache[chatId] = {
             packages: allPackages,
             currentPage: currentPage,
         };
-    
+
         const pageSize = 6;
         const totalPages = Math.ceil(allPackages.length / pageSize);
         const paginated = allPackages.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-    
+
         let message = `🌍 *Available eSIM Packages (Page ${currentPage + 1} of ${totalPages})*\n\n`;
         const buttons = [];
-    
+
         let row = [];
         paginated.forEach((item, index) => {
             const serial = currentPage * pageSize + index + 1;
             message += `${serial}.\n Name: ${item.name} \nPrice: ${item.destination.amount} ${item.destination.unit} \nValidity: ${item.validity.quantity} ${item.validity.unit} \nOperator: ${item.operator.name} \nAvailability Zones: ${item.availability_zones.join(", ")} \n\n`;
-    
+
             row.push({ text: `${serial}`, callback_data: `view_package_${item.id}` });
-    
+
             if ((index + 1) % 3 === 0 || index === paginated.length - 1) {
                 buttons.push(row);
                 row = [];
             }
         });
-    
+
         const navigationButtons = [];
         if (currentPage > 0) {
             navigationButtons.push({ text: "⬅️ Previous", callback_data: `pagecountry_prev_${countryCode}` });
@@ -203,18 +272,18 @@ export async function registerUser(chatId, payload, chat, text_message) {
         if ((currentPage + 1) < totalPages) {
             navigationButtons.push({ text: "Next ➡️", callback_data: `pagecountry_next_${countryCode}` });
         }
-    
+
         // Push navigation buttons (if any)
         if (navigationButtons.length > 0) {
             buttons.push(navigationButtons);
         }
-    
+
         // ✅ Add Main Menu button in the last row
         buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
-    
+
         await sendButtons(chatId, buttons, message);
     }
-    
+    // pagination for country
     else if (payload?.startsWith("pagecountry_next_")) {
         console.log("we are in country page next");
         const parts = payload.split("_");
@@ -316,7 +385,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
             await sendButtons(chatId, buttons, message);
         }
     }
-
+    // global region
     else if ((chat.last_message?.startsWith("global_GXX")) || (payload?.startsWith("global_GXX")) || (payload === "global_GXX")) {
         console.log(payload, "payload in region_global");
         const parts = payload.split("_");
@@ -365,6 +434,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
         buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
         await sendButtons(chatId, buttons, message);
     }
+    // europe region
     else if ((chat.last_message?.startsWith("europe_EXX")) || (payload?.startsWith("europe_EXX")) || (payload === "europe_EXX")) {
         console.log(payload, "payload in region_global");
         const parts = payload.split("_");
@@ -413,7 +483,7 @@ export async function registerUser(chatId, payload, chat, text_message) {
         buttons.push([{ text: "🏠 Main Menu", callback_data: "main_menu" }]);
         await sendButtons(chatId, buttons, message);
     }
-
+    // paginations for regions
     else if (chat.last_message?.match(/^(global|europe)_page_next_/) || payload?.match(/^(global|europe)_page_next_/) || payload === "global_page_next_" || payload === "europe_page_next_") {
         const parts = payload.split("_");
         const region = parts[0];
@@ -510,13 +580,11 @@ export async function registerUser(chatId, payload, chat, text_message) {
             await sendButtons(chatId, buttons, message);
         }
     }
-
-
+    // selected package details
     else if (payload?.startsWith("view_package_")) {
         const packageId = payload.split("_")[2]; // Extract the package ID from the callback data
         console.log("packageId", packageId);
         const response = await getProductsById(packageId);
-        // const response = await axios.get(`http://localhost:3000/api/products?product_Id=${packageId}`);
         console.log("response data", response.data);
         const { name, destination, validity, operator } = response.data;
         const { availability_zones } = response.data;
@@ -528,17 +596,79 @@ export async function registerUser(chatId, payload, chat, text_message) {
         ];
         await sendButtons(chatId, buttons, message, "region_global")
     }
-
-
-
-
-
-
-
-
-
-
+    // else if (payload?.startsWith("confirm_")){
+    //     let packageId = payload.split("_")
+    //     const id = packageId[1]
+    //     console.log(id, "packageID")
+    //     const response = await getProductsById(id)
+    //     const { name, destination, validity, operator, availability_zones } = response.data;
+    //     const esimData = new esim({
+    //         operator,           // e.g., "Zong"
+    //         availabilityZone: availability_zones, // Assuming availability_zones is an array like ['Pakistan', 'Saudi Arabia']
+    //         validity,
+    //         price: destination.price,         // e.g., 999
+    //         wallets:          // Optionally, link wallets here if required, e.g., [{ walletId: 'xyz123' }]
+    // });
+    
+    //     // Save the esim document
+    //     try {
+    //         const savedEsim = await esimData.save();
+    //         console.log('Saved esim:', savedEsim);
+    
+    //         // Respond to the user or do something with the saved esim, e.g., send a confirmation message
+    //         sendMessage(chatId, `Esim with operator ${operator} saved successfully!`);
+    //     } catch (error) {
+    //         console.error('Error saving esim:', error);
+    //         sendMessage(chatId, `❌ Error saving esim data. Please try again later.`);
+    //     }
+    // }
+    else if (payload?.startsWith("confirm_")) {
+        let packageId = payload.split("_");
+        const id = packageId[1];
+        console.log(id, "packageID");
+    
+        const response = await getProductsById(id);
+        console.log(response.data,"response")
+        const { name, destination, validity, operator, availability_zones ,description} = response.data;
+    
+        // Find the wallet first
+        const wallet = await walletsCollection.findOne({ chatId, accountType: "PKR" }); // ya jo bhi required accountType ho
+        if (!wallet) {
+            return sendMessage(chatId, "❌ No active wallet found.");
+        }
+    
+        const esimData = new esim({
+            productName: operator.name,
+            availabilityZone: availability_zones,
+            description,
+            productId: id,
+            price: destination.amount,
+            wallets: wallet._id, // ✅ Correctly assigning ObjectId
+        });
+    
+        // Save the esim document
+        try {
+            const savedEsim = await esimData.save();
+            console.log('Saved esim:', savedEsim);
+    
+            sendMessage(chatId, `✅ eSIM with operator ${operator?.name} purchased successfully!`);
+        } catch (error) {
+            console.error('Error saving esim:', error);
+            sendMessage(chatId, `❌ Error saving esim data. Please try again later.`);
+        }
+    }
+    
 
 
 }
+
+
+
+
+
+
+
+
+
+
 
